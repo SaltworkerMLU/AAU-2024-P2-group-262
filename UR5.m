@@ -12,14 +12,14 @@ classdef UR5
     end
 
     methods (Static)
-        function [TBW, T06] = forwardKinematics(joint, start) % [T06, TBW]
-            IOtheta = zeros(1, length(joint)); % a 1xj-matrix where j is length of "joint".
-            for i = start:length(joint) % The "theta" needed is ...
+        function [TBW, T06] = forwardKinematics(joint, start, ender) % s = start joint; e = end joint
+            IOtheta = zeros(1, ender); % a 1xj-matrix where j is length of "joint".
+            for i = start:ender % The "theta" needed is ...
                 IOtheta(i) = UR5.theta(i) + joint(i); 
             end % ... the sum of each element DH-theta and joint
 
             TBW = eye(4); % Set TBW to identity matrix
-            for i = start:length(joint) % For every joint
+            for i = start:ender % For every joint
                 % Forward kinematics of T{i-1}{i}
                 temp = [cos(IOtheta(i))                     -sin(IOtheta(i))                    0                  UR5.a(i);
                         sin(IOtheta(i))*cos(UR5.alpha(i))   cos(IOtheta(i))*cos(UR5.alpha(i))  -sin(UR5.alpha(i)) -sin(UR5.alpha(i))*UR5.d(i);
@@ -41,7 +41,7 @@ classdef UR5
                 Joint(i,1) = phi1 + phi2(1+mod(round((i-1)/2),2)) + pi/2; % theta1 % ... solution is chosen using equation 1+mod(round((i-1)/2),2)
 
                 %theta5: Has 2 possible solutions (depending on theta1)
-                T01 = TDH(UR5.alpha(1),UR5.a(1),0,Joint(i,1)) ; % d(1) is disregarded, as it is nullified using TB0
+                T01 = UR5.TB0 \ UR5.forwardKinematics(Joint(i,:), 1, 1); % T01 = TB0^(-1) * TB1, essentially d(1) is disregarded, as it is nullified using TB0
                 T16 = T01 \ T06 ; % T16 = T01^(-1) * T06
                 phi1 = [acos((-T16(2,4)-UR5.d(4))/UR5.d(6)) -acos((-T16(2 ,4)-UR5.d(4))/UR5.d(6))]; % a 1x2 vector containing each possible solution of theta5...
                 Joint(i,5) = phi1(1+mod(round((i-1)/4),2)); % theta5 % ... solution is chosen using equation 1+mod(round((i-1)/4),2)
@@ -54,8 +54,8 @@ classdef UR5
                 Joint(i,6) = atan2 ( -( Y61y / sin ( Joint(i,5)) ) , Y61x / sin ( Joint(i,5)) ) ; % theta6
 
                 % Halfway there - Calculating theta2 , theta3 & theta4
-                T45 = TDH (UR5.alpha(5),UR5.a(5),UR5.d(5) , Joint(i,5)) ;
-                T56 = TDH (UR5.alpha(6),UR5.a(6),UR5.d(6) , Joint(i,6)) ; % Replace P05 by calculating T56
+                T45 = UR5.forwardKinematics(Joint(i,:), 5, 5);
+                T56 = UR5.forwardKinematics(Joint(i,:), 6, 6); % Replace P05 by calculating T56
                 T14 = T16 / ( T45 * T56 );
 
                 % theta3: Has 8 possible solutions (depending on theta1 and theta6)
@@ -77,11 +77,10 @@ classdef UR5
                 Joint(i,2) = phi1 - phi2; % theta2
 
                 % theta4: Has 8 possible solutions (depending on theta1 and theta6)
-                T12=TDH(UR5.alpha(2),UR5.a(2),UR5.d(2),Joint(i,2)+UR5.theta(2));
-                T23=TDH(UR5.alpha(3),UR5.a(3),UR5.d(3),Joint(i,3)+UR5.theta(3));
+                T12=UR5.forwardKinematics(Joint(i,:), 2, 2);
+                T23=UR5.forwardKinematics(Joint(i,:), 3, 3);
                 T34 = (T12 * T23) \ T14;
                 Joint(i,4) = atan2 ( T34 (2 ,1) , T34 (1 ,1) ) ; % theta4
-
             end
             Joint = 180/pi*Joint; % Convert to degrees
 
@@ -118,8 +117,8 @@ classdef UR5
         end
 
         function moveL(P0, Pf, robot)
-            TBS = UR5.forwardKinematics(P0, 1); % Use only TBW of P0
-            TBE = UR5.forwardKinematics(Pf, 1); % Use only TBW of Pf
+            TBS = UR5.forwardKinematics(P0, 1, 6); % Use only TBW of P0
+            TBE = UR5.forwardKinematics(Pf, 1, 6); % Use only TBW of Pf
 
             startLoc = Pose_2_XYZRPW(TBS)'; % Acquire XYZRPW of TBS
             endLoc = Pose_2_XYZRPW(TBE)'; % Acquire XYZRPW of TBE
