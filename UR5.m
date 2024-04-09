@@ -1,12 +1,3 @@
-%{
-    ATTENTION A WORK IN PROGRESS ATTENTION
-    
-    The class "UR5" represents the UR5 robot and its kinematics such as:
-    - Forward Kinematics
-    - Inverse Kinematics
-    - Trajectory Generation
-    - Jacobian
-%}
 classdef UR5
     properties (Constant)
         % Modified Denavit-Hertenberg parameters (DH)
