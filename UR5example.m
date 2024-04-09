@@ -14,8 +14,8 @@ P0 = pi/180 * [0 ,-90, -90, 0, 90, 0];
 Pf = pi/180 * [-59.24 ,-124.95, -78.80, 25.82, 89.62, 107.79];
 P2 = pi/180 * [0 ,0, 0, 0, 90, 0];
 
-[TBW, T06] = UR5.forwardKinematics(Pf, 1); % Use forward kinematics to acquire transform matrices
-%[TBW, T06] = UR5.forwardKinematics(P2, 1); % Use forward kinematics to acquire transform matrices
+[TBW, T06] = UR5.forwardKinematics(Pf, 1, 6); % Use forward kinematics to acquire transform matrices
+%[TBW, T06] = UR5.forwardKinematics(P2, 1, 6); % Use forward kinematics to acquire transform matrices
 
 disp(T06)
 
