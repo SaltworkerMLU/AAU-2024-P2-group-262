@@ -43,15 +43,15 @@ classdef UR5
                 %theta5: Has 2 possible solutions (depending on theta1)
                 T01 = UR5.TB0 \ UR5.forwardKinematics(Joint(i,:), 1, 1); % T01 = TB0^(-1) * TB1, essentially d(1) is disregarded, as it is nullified using TB0
                 T16 = T01 \ T06 ; % T16 = T01^(-1) * T06
-                phi1 = [acos((-T16(2,4)-UR5.d(4))/UR5.d(6)) -acos((-T16(2 ,4)-UR5.d(4))/UR5.d(6))]; % a 1x2 vector containing each possible solution of theta5...
+                phi1 = [-acos((-T16(2,4)-UR5.d(4))/UR5.d(6)) acos((-T16(2 ,4)-UR5.d(4))/UR5.d(6))]; % a 1x2 vector containing each possible solution of theta5...
                 Joint(i,5) = phi1(1+mod(round((i-1)/4),2)); % theta5 % ... solution is chosen using equation 1+mod(round((i-1)/4),2)
 
                 %theta6: Has 4 possible solution (depending on theta1)
                 T60 = inv ( T06 ) ;
-                Y61 = [ T60(1 ,1) ; T60(2 ,1) ; T60(3 ,1) ] * - sin ( Joint(i,1)) + [ T60(1 ,2) ;T60(2 ,2) ; T60(3 ,2) ] * cos ( Joint(i,1)) ;
+                Y61 = -sin(Joint(i,1)) * [ T60(1 ,1) ; T60(2 ,1) ; T60(3 ,1) ] + cos(Joint(i,1)) * [ T60(1 ,2) ;T60(2 ,2) ; T60(3 ,2) ];
                 Y61x = Y61 (1 ,1) ;
                 Y61y = Y61 (2 ,1) ;
-                Joint(i,6) = atan2 ( -( Y61y / sin ( Joint(i,5)) ) , Y61x / sin ( Joint(i,5)) ) ; % theta6
+                Joint(i,6) = atan2 ( ( Y61y / sin ( Joint(i,5)) ) , -Y61x / sin ( Joint(i,5)) ) ; % theta6 %  - pi
 
                 % Halfway there - Calculating theta2 , theta3 & theta4
                 T45 = UR5.forwardKinematics(Joint(i,:), 5, 5);
@@ -82,7 +82,13 @@ classdef UR5
                 T34 = (T12 * T23) \ T14;
                 Joint(i,4) = atan2 ( T34 (2 ,1) , T34 (1 ,1) ) ; % theta4
             end
+
             Joint = 180/pi*Joint; % Convert to degrees
+            
+            % Betragt dette som et lille plaster på invers kinematik metoden.
+            for i = 1:length(Joint)
+                Joint(i,6) = Joint(i,6) + 180;
+            end
 
             Joint = unique(Joint,'rows'); % Remove duplicates
 
@@ -93,7 +99,14 @@ classdef UR5
             end      
         end
         
-        function moveJ(P0, Pf, robot)
+        function moveJ(P0, Pf)
+            RDK = Robolink; % Generate a Robolink object RDK. This object interfaces with RoboDK.
+            robot = RDK.ItemUserPick('Select one robot', RDK.ITEM_TYPE_ROBOT); % Select robot
+            if robot.Valid() == 0
+            error('No robot selected'); % Missing robot
+            end
+            ref = robot.Parent();
+
             P0 = 180/pi * P0; % Convert to degrees
             Pf = 180/pi * Pf; % Convert to degrees
             P0dot = [0 0 0 0 0 0]; % Assuming no start velocity
@@ -101,19 +114,27 @@ classdef UR5
 
             tf = max(abs(sqrt((4*(Pf - P0))/50))); % function time for moveJ()
             disp("Execution time of moveJ(): " + tf);
-            t=0:0.05:tf; % 20fps
+            t=0:0.002:tf; % Control frequency: 500 hz
+            %t=0:0.05:tf; % Control frequency: 20 hz
             
             % Cubic polynomal parameters
             a0 = P0;
             a1 = P0dot;
             a2 = 3/(tf.^2)*(Pf-P0)-2/tf*P0dot-1/tf*Pfdot;
             a3 = -2/(tf.^3)*(Pf-P0)+1/(tf.^2)*(Pfdot+P0dot);
-
+            
+            progJoint = RDK.AddProgram('MoveJ Cubic');
+            progJoint.addMoveJ(RDK.Item('start')); %MoveJ (start)
+            
             % Calculate frames in 6x1 vector [x y z gamma beta alpha]
             for i=2:(length(t)-1)
                 P=a0+a1*t(i)+a2*t(i)^2+a3*t(i)^3; % Aquire position
                 robot.setJoints(P); % via. point in RoboDK
+                targetname = sprintf('TargetJ%i',i);
+                target = RDK.AddTarget(targetname,ref,robot);
+                progJoint.addMoveJ(target);
             end
+            progJoint.addMoveJ(RDK.Item('end')); %MoveJ (end)
         end
 
         function moveL(P0, Pf, robot)
@@ -161,8 +182,8 @@ classdef UR5
             % Narrowed down using equation: det(J) = J1 * J2, where:
             % J1 = 𝑠3𝑠5𝑎2𝑎3
             % J2 = (𝑐2𝑎2+𝑐23𝑎3+𝑠234𝑑5)
-            J1 = sin(joint(2))*sin(joint(5))*UR5.a(3)*UR5.a(4);
-            J2 = cos(joint(2))*UR5.a(3)+cos(joint(2)+joint(3))*UR5.a(4)+sin(joint(2)+joint(3)+joint(4))+UR5.d(5);
+            J1 = sin(joint(3))*sin(joint(5))*UR5.a(3)*UR5.a(4);
+            J2 = cos(joint(2))*UR5.a(3) + cos(joint(2)+joint(3))*UR5.a(4)+sin(joint(2)+joint(3)+joint(4))*UR5.d(5);
             J = J1 * J2;
         end
     end
