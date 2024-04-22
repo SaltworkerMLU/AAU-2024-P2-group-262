@@ -1,6 +1,6 @@
 classdef UR5
     properties (Constant)
-        % Modified Denavit-Hertenberg parameters (DH)
+        % Modified Denavit-Hartenberg parameters (DH)
         alpha = pi/180 * [0 90 0 0 -90 90]; % radians
         a = [0 0 425 392 0 0]; % mm
         theta = pi/180 * [0 180 0 0 0 180]; % radians
@@ -9,6 +9,8 @@ classdef UR5
         % Predefined transform matrices of the UR5
         TB0 = [eye(4,3) [0;0;89.2;1]]; % Transform matrix from base to joint 0 % d(1) = 89.2
         T6W = diag([-1 -1 1 1]); % Diagonal 4x4-matrix using eigenvalues [-1, -1, 1, 1]
+        a_max = 1; %2922
+        v_max = 10;
     end
 
     methods (Static)
@@ -24,7 +26,7 @@ classdef UR5
                 temp = [cos(IOtheta(i))                     -sin(IOtheta(i))                    0                  UR5.a(i);
                         sin(IOtheta(i))*cos(UR5.alpha(i))   cos(IOtheta(i))*cos(UR5.alpha(i))  -sin(UR5.alpha(i)) -sin(UR5.alpha(i))*UR5.d(i);
                         sin(IOtheta(i))*sin(UR5.alpha(i))   cos(IOtheta(i))*sin(UR5.alpha(i))   cos(UR5.alpha(i))  cos(UR5.alpha(i))*UR5.d(i);
-                        0                                   0                                   0                   1];
+                        0   0   0   1];
                 TBW = TBW * temp; % Multiplying prior T with i'th transform matrix.
             end
             T06 = UR5.TB0 \ TBW / UR5.T6W; % T06 is calculated using the equation: T06 = TB0^(-1) * TBW * T6W^(-1)
@@ -37,31 +39,38 @@ classdef UR5
                 %theta1: Has 2 possible solutions
                 P05 = T06*[0; 0; -UR5.d(6); 1]; % Distance between P5 and P6 is d(6)
                 phi1 = atan2(P05(2), P05(1));
-                phi2 = [acos(UR5.d(4)/sqrt(P05(1)^2+P05(2)^2)) -acos(UR5.d(4)/sqrt(P05(1)^2+P05(2)^2))]; % a 1x2 vector containing each possible solution of theta1...
-                Joint(i,1) = phi1 + phi2(1+mod(round((i-1)/2),2)) + pi/2; % theta1 % ... solution is chosen using equation 1+mod(round((i-1)/2),2)
+                phi2 = acos(UR5.d(4)/sqrt(P05(1)^2+P05(2)^2));
+                phi = [phi2 -phi2]; % a 1x2 vector containing each possible solution of theta1...
+                Joint(i,1) = phi1 + phi(1+mod(round((i-1)/2),2)) + pi/2; % theta1 % ... solution is chosen using equation 1+mod(round((i-1)/2),2)
 
                 %theta5: Has 2 possible solutions (depending on theta1)
                 T01 = UR5.TB0 \ UR5.forwardKinematics(Joint(i,:), 1, 1); % T01 = TB0^(-1) * TB1, essentially d(1) is disregarded, as it is nullified using TB0
                 T16 = T01 \ T06 ; % T16 = T01^(-1) * T06
-                phi1 = [-acos((-T16(2,4)-UR5.d(4))/UR5.d(6)) acos((-T16(2 ,4)-UR5.d(4))/UR5.d(6))]; % a 1x2 vector containing each possible solution of theta5...
+                phi = acos((-T16(2,4)-UR5.d(4))/UR5.d(6));
+                phi1 = [phi -phi]; % a 1x2 vector containing each possible solution of theta5...
                 Joint(i,5) = phi1(1+mod(round((i-1)/4),2)); % theta5 % ... solution is chosen using equation 1+mod(round((i-1)/4),2)
 
                 %theta6: Has 4 possible solution (depending on theta1)
                 T60 = inv ( T06 ) ;
-                Y61 = -sin(Joint(i,1)) * [ T60(1 ,1) ; T60(2 ,1) ; T60(3 ,1) ] + cos(Joint(i,1)) * [ T60(1 ,2) ;T60(2 ,2) ; T60(3 ,2) ];
-                Y61x = Y61 (1 ,1) ;
-                Y61y = Y61 (2 ,1) ;
-                Joint(i,6) = atan2 ( ( Y61y / sin ( Joint(i,5)) ) , -Y61x / sin ( Joint(i,5)) ) ; % theta6 %  - pi
+                T60x = [ T60(1 ,1) ; T60(2 ,1) ; T60(3 ,1) ];
+                T60y = [ T60(1 ,2) ; T60(2 ,2) ; T60(3 ,2) ];
+                Y61 = -sin(Joint(i,1)) * T60x + cos(Joint(i,1)) * T60y;
+                Joint(i,6) = atan2( (Y61(2,1)/sin(Joint(i,5))),-Y61(1,1)/sin(Joint(i,5)) ) ; % theta6 %  - pi
+                Joint(i,6) = Joint(i,6) + UR5.theta(6);
+                if Joint(i,6) > pi % if value is above 180 degrees
+                    Joint(i,6) = Joint(i,6) - 2*pi; % subtract by 360 degrees
+                end
 
                 % Halfway there - Calculating theta2 , theta3 & theta4
                 T45 = UR5.forwardKinematics(Joint(i,:), 5, 5);
-                T56 = UR5.forwardKinematics(Joint(i,:), 6, 6); % Replace P05 by calculating T56
+                T56 = UR5.forwardKinematics(Joint(i,:), 6, 6) / UR5.T6W; % Replace P05 by calculating T56
                 T14 = T16 / ( T45 * T56 );
 
                 % theta3: Has 8 possible solutions (depending on theta1 and theta6)
                 T14xz = norm([T14(1,4) T14(3,4)]); % Length of T14x and T14z
-                phi1 = [acos((T14xz^2 - UR5.a(3)^2 - UR5.a(4)^2)/(2 * UR5.a(3) * UR5.a(4))) -acos((T14xz^2 - UR5.a(3)^2 - UR5.a(4)^2)/(2 * UR5.a(3) * UR5.a(4)))];
-                Joint(i,3) = phi1(1+mod(round((i-1)/8),2)); % theta3 % ... solution is chosen using equation 1+mod(round((i-1)/4),2)
+                phi1 = acos((T14xz^2 - UR5.a(3)^2 - UR5.a(4)^2)/(2 * UR5.a(3) * UR5.a(4)));
+                phi = [phi1 -phi1];
+                Joint(i,3) = phi(1+mod(round((i-1)/8),2)); % theta3 % ... solution is chosen using equation 1+mod(round((i-1)/4),2)
 
                 % If either Joint(i,1), Joint(i,3) or Joint(i,5) is an imaginary number...
                 if ~isreal(Joint(i,1)) || ~isreal(Joint(i,3)) || ~isreal(Joint(i,5)) 
@@ -84,19 +93,14 @@ classdef UR5
             end
 
             Joint = 180/pi*Joint; % Convert to degrees
-            
-            % Betragt dette som et lille plaster på invers kinematik metoden.
-            for i = 1:length(Joint)
-                Joint(i,6) = Joint(i,6) + 180;
-            end
-
-            Joint = unique(Joint,'rows'); % Remove duplicates
+            Joint = unique(Joint,'rows'); % Remove duplicate solutions
 
             for i = length(Joint):-1:1 % Countdown to remove 'NaN' rows
                 if isnan(Joint(i))
                     Joint(i,:) = [];
                 end
             end      
+
         end
         
         function moveJ(P0, Pf)
@@ -112,10 +116,21 @@ classdef UR5
             P0dot = [0 0 0 0 0 0]; % Assuming no start velocity
             Pfdot = [0 0 0 0 0 0]; % Assuming no end velocity
 
-            tf = max(abs(sqrt((4*(Pf - P0))/50))); % function time for moveJ()
+            tf_a = max(abs(sqrt(4*(Pf - P0)/UR5.a_max))); 
+            tb = UR5.v_max / UR5.a_max; % t = v / a
+            thetab = P0 + 1/2 * UR5.a_max * tb.^2;
+            thetabneg = Pf - 1/2 * UR5.a_max * tb.^2; % thetab = Pf - 1/2 * UR5.a_max * (tf - t)^2 % t
+            tf_v = max(abs((thetabneg - thetab)/UR5.v_max)); % t = ds/v
+
+            if 2*tb > tf_a % If acceleration reaches max.
+                tf = tf_a;
+            else % if velocity hits max
+                tf = tf_v;
+            end
             disp("Execution time of moveJ(): " + tf);
-            t=0:0.002:tf; % Control frequency: 500 hz
-            %t=0:0.05:tf; % Control frequency: 20 hz
+
+            %t=0:0.002:tf; % Control frequency: 500 hz
+            t=0:0.05:tf; % Control frequency: 20 hz
             
             % Cubic polynomal parameters
             a0 = P0;
@@ -123,30 +138,44 @@ classdef UR5
             a2 = 3/(tf.^2)*(Pf-P0)-2/tf*P0dot-1/tf*Pfdot;
             a3 = -2/(tf.^3)*(Pf-P0)+1/(tf.^2)*(Pfdot+P0dot);
             
-            progJoint = RDK.AddProgram('MoveJ Cubic');
-            progJoint.addMoveJ(RDK.Item('start')); %MoveJ (start)
+            %progJoint = RDK.AddProgram('MoveJ Cubic');
+            %progJoint.addMoveJ(RDK.Item('start')); %MoveJ (start)
             
             % Calculate frames in 6x1 vector [x y z gamma beta alpha]
             for i=2:(length(t)-1)
                 P=a0+a1*t(i)+a2*t(i)^2+a3*t(i)^3; % Aquire position
                 robot.setJoints(P); % via. point in RoboDK
-                targetname = sprintf('TargetJ%i',i);
-                target = RDK.AddTarget(targetname,ref,robot);
-                progJoint.addMoveJ(target);
+                %targetname = sprintf('TargetJ%i',i);
+                %target = RDK.AddTarget(targetname,ref,robot);
+                %progJoint.addMoveJ(target);
             end
-            progJoint.addMoveJ(RDK.Item('end')); %MoveJ (end)
+            %progJoint.addMoveJ(RDK.Item('end')); %MoveJ (end)
         end
 
         function moveL(P0, Pf, robot)
             TBS = UR5.forwardKinematics(P0, 1, 6); % Use only TBW of P0
             TBE = UR5.forwardKinematics(Pf, 1, 6); % Use only TBW of Pf
 
-            startLoc = Pose_2_XYZRPW(TBS)'; % Acquire XYZRPW of TBS
-            endLoc = Pose_2_XYZRPW(TBE)'; % Acquire XYZRPW of TBE
-            tf = max(abs(sqrt((4*norm(endLoc - startLoc))/50))); % function time for moveJ()
+            startLoc = Pose_2_Fanuc(TBS)'; % Acquire XYZRPW of TBS % Fanuc/KUKA/XYZRPY don't matter
+            endLoc = Pose_2_Fanuc(TBE)'; % Acquire XYZRPW of TBE
+
+            disp(startLoc)
+
+            tf_a = max(abs(sqrt(4*(endLoc - startLoc)/UR5.a_max))); 
+            tb = UR5.v_max / UR5.a_max; % t = v / a
+            thetab = startLoc + 1/2 * UR5.a_max * tb.^2;
+            thetabneg = endLoc - 1/2 * UR5.a_max * tb.^2; % thetab = Pf - 1/2 * UR5.a_max * (tf - t)^2 % t
+            tf_v = max(abs((thetabneg - thetab)/UR5.v_max)); % t = ds/v
+
+            if 2*tb > tf_a % If acceleration reaches max.
+                tf = tf_a;
+            else % if velocity hits max
+                tf = tf_v;
+            end
+
             t=0:0.05:tf; % 20fps  
             disp("Execution time of moveL(): " + tf);
-            
+
             Tse = TBS \ TBE; %Compute Tse (Angle-axis representation)
             theta = acos((Tse(1,1)+Tse(2,2)+Tse(3,3)-1)/2); %Find axis angle
             Ps = [0 0 0 0]; % Start frame position (origo)
