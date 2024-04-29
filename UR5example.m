@@ -19,11 +19,7 @@ Pe = pi/180 * RDK.Item('end').Joints();
 
 disp(TBW)
 
-%solution = UR5.inverseKinematics(T06);
 solution = UR5.inverseKinematics(T06);
-
-
-progJoint = RDK.AddProgram('Start->end');
 
 % Use 8 IK solution where joints are within range [-180, 180]
 % Add said moveJ() commands to RoboDk
