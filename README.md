@@ -8,4 +8,4 @@
 ![Screenshot](media/forwardKinematics-drawio.png) 
 ![Screenshot](media/inverseKinematics-drawio.png) 
 ![Screenshot](media/movetf&spot-drawio.png) 
-![Screenshot](media/moveJ-drawio.png) 
+![Screenshot](media/move-drawio.png) 
