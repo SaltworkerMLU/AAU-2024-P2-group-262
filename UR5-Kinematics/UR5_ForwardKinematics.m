@@ -11,7 +11,6 @@ ref = robot.Parent();
 
 UR5; % Create object
 
-
 targetname = sprintf('example');
 robot.setJoints([-30 -30 -30 -30 -30 -30])
 target = RDK.AddTarget(targetname, ref, robot);
