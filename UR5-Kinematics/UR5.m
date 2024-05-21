@@ -36,7 +36,7 @@ classdef UR5
         % Get 6DOF position of transform matrix using XYZ angle-set convention.
         % Per "RoboDK" terminology, it is used by Fanuc/Motoman 
         function oritentation = sixDOF(TBW)
-            beta = atan2(-TBW(3,1), sqrt(TBW(1,1)^2) + TBW(2,1)^2);
+            beta = atan2(-TBW(3,1), sqrt(TBW(1,1)^2 + TBW(2,1)^2));
             gamma = atan2(TBW(3,2)/cos(beta), TBW(3,3)/cos(beta));
             alpha = atan2(TBW(2,1)/cos(beta), TBW(1,1)/cos(beta));
             
